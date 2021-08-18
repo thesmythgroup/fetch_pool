@@ -57,7 +57,14 @@ class FetchPool {
   /// Returns a [Future] with the map of results, keyed by each URL.
   /// This method is only allowed to be called once on a [FetchPool] instance.
   /// If you need to repeat a fetch, you need to create a fresh instance.
-  Future<Map<String, FetchPoolResult>> fetch() async {
+  /// 
+  /// An [estimatedTotalPogressCallback] function can optionally be passed in. It will
+  /// be called repeatedly to report on the overall estimated progress. The progress
+  /// is not calculated by the overall combined download size of all URLs (since
+  /// that would require a roundtrip to the server for each URL before even beginning
+  /// the download). Instead, the progress mainly reports the percentage of completed
+  /// downloads plus the download percentage of active downloads.
+  Future<Map<String, FetchPoolResult>> fetch({ Function(double)? estimatedTotalPogressCallback }) async {
     if (_hasFetchBeenRun) {
       throw StateError('It is illegal to run fetch more than once on the same instance.');
     }
@@ -66,25 +73,86 @@ class FetchPool {
 
     var pool = Pool(maxConcurrent);
     final uniqueUrls = urls.toSet().toList();
+    final Map<String, double> activeJobs = {};  
+    var completedJobCount = 0;
+    double lastTotalProgress = 0;
+
+    void notifyProgressCallback() {
+      if (estimatedTotalPogressCallback != null) {
+        final combinedActivePercentage = activeJobs.values.fold<double>(0, (sum, percent) => sum + percent);
+        final activeJobFraction = activeJobs.isNotEmpty ? (activeJobs.length * (combinedActivePercentage / (activeJobs.length * 100))) : 0;
+        final completedJobFraction = completedJobCount + activeJobFraction;
+        final totalProgress = (completedJobFraction / uniqueUrls.length) * 100;
+
+        if (totalProgress != lastTotalProgress) {
+          estimatedTotalPogressCallback(totalProgress);
+          lastTotalProgress = totalProgress;
+        }
+      }
+    }
 
     var poolStream = pool.forEach<String, FetchPoolResult>(uniqueUrls, (urlString) async {
       final url = Uri.parse(urlString);
       String filename = p.basename(url.path);
       String destinationPath = p.join(destinationDirectory, filename);
 
+      double calculateProgress(int downloadedByteCount, int? contentLength) {
+        if (contentLength != null && contentLength > 0) {
+          return (downloadedByteCount / contentLength) * 100;
+        }
+
+        return 0;
+      }
+
+      activeJobs[urlString] = 0;
+
       final request = http.Request('GET', url);
       final http.StreamedResponse response = await client.send(request);
+      FetchPoolResult result;
 
       if (response.statusCode == HttpStatus.ok) {
         File destinationFile = await File(destinationPath).create(recursive: true);
-        await response.stream.pipe(destinationFile.openWrite());
+        IOSink destinationFileWriteStream = destinationFile.openWrite();
+        int downloadedByteCount = 0;
+        // destinationFileWriteStream.addStream(stream)
 
-        return FetchPoolResult(url: urlString, localPath: destinationPath);
+        await response.stream.listen((List<int> chunk) {
+          // Display percentage of completion
+          final percentage = calculateProgress(downloadedByteCount, response.contentLength);
+          activeJobs[urlString] = percentage;
+          notifyProgressCallback();
+          
+          // chunks.add(chunk);
+          destinationFileWriteStream.add(chunk);
+          downloadedByteCount += chunk.length;
+        }).asFuture();
+
+        // Display percentage of completion
+        final percentage = calculateProgress(downloadedByteCount, response.contentLength);
+        activeJobs[urlString] = percentage;
+        notifyProgressCallback();
+
+        // Close the stream
+        await destinationFileWriteStream.close();
+          
+        result = FetchPoolResult(url: urlString, localPath: destinationPath);
       } else {
-        return FetchPoolResult(url: urlString, error: 'Status ${response.statusCode}');
+        result = FetchPoolResult(url: urlString, error: 'Status ${response.statusCode}');
       }
+
+      activeJobs.remove(urlString);
+      completedJobCount += 1;
+
+      notifyProgressCallback();
+
+      return result;
     }, onError: (urlString, error, stackTrace) {
       resultsByUrl[urlString] = FetchPoolResult(url: urlString, error: error);
+
+      activeJobs.remove(urlString);
+      completedJobCount += 1;
+
+      notifyProgressCallback();
 
       /// Do not return the error to the output stream
       return false;

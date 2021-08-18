@@ -107,6 +107,35 @@ void main() {
       expect(entries.length, urls.length - 3);
     });
 
+    test('Total Progress Callback', () async {
+      final urls = List.generate(50, (index) => 'http://example.com/image$index.png');
+      final fetchPool = FetchPool(maxConcurrent: 5, urls: urls, destinationDirectory: destinationDir);
+      fetchPool.client = MockClient((request) async {
+        final filename = p.basename(request.url.path);
+
+        if (filename == 'image10.png' || filename == 'image30.png') {
+          return Response('Not found', 404); 
+        } else if (filename == 'image40.png') {
+          return Response('Internal Server Error', 500); 
+        } else {
+          return Response.bytes(imageGifBytes, 200); 
+        }
+      });
+
+      var progressInvocationCount = 0;
+      double lastProgress = -1;
+      await fetchPool.fetch(estimatedTotalPogressCallback: (progress) {
+        expect(progress >= 0, true);
+        expect(progress <= 100, true);
+        expect(progress > lastProgress, true);
+        lastProgress = progress;
+        progressInvocationCount += 1;
+      });
+
+      expect(lastProgress, 100);
+      expect(progressInvocationCount >= urls.length, true);
+    });
+
     test('Ensure maxConcurrent is greater than 0', () async {
       expect(() => FetchPool(maxConcurrent: 0, urls: [], destinationDirectory: '.'), throwsArgumentError);
       expect(() => FetchPool(maxConcurrent: -1, urls: [], destinationDirectory: '.'), throwsArgumentError);
@@ -128,6 +157,8 @@ void main() {
       // Calling fetch a second time should fail
       expect(() async => await fetchPool.fetch(), throwsStateError);
     });
+
+
     
   });
 }
