@@ -13,13 +13,12 @@ void main() {
     final imageGifBytes = base64Decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
     String destinationDir = './__fetch_pool_test_images';
 
-    setUp(() {
-      
-    });
-
     tearDown(() async {
       // Clean up files
-      Directory(destinationDir).delete(recursive: true);
+      final dir = Directory(destinationDir);
+      if (dir.existsSync()) {
+        dir.delete(recursive: true);
+      }
     });
 
     test('Single Image', () async {
@@ -71,9 +70,9 @@ void main() {
         final filename = p.basename(request.url.path);
 
         if (filename == 'image10.png' || filename == 'image30.png') {
-          return Response("Not found", 404); 
+          return Response('Not found', 404); 
         } else if (filename == 'image40.png') {
-          return Response("Internal Server Error", 500); 
+          return Response('Internal Server Error', 500); 
         } else {
           return Response.bytes(imageGifBytes, 200); 
         }
@@ -109,13 +108,13 @@ void main() {
     });
 
     test('Ensure maxConcurrent is greater than 0', () async {
-      expect(() => FetchPool(maxConcurrent: 0, urls: [], destinationDirectory: "."), throwsArgumentError);
-      expect(() => FetchPool(maxConcurrent: -1, urls: [], destinationDirectory: "."), throwsArgumentError);
+      expect(() => FetchPool(maxConcurrent: 0, urls: [], destinationDirectory: '.'), throwsArgumentError);
+      expect(() => FetchPool(maxConcurrent: -1, urls: [], destinationDirectory: '.'), throwsArgumentError);
     });
 
     test('Ensure destinationDirectory is not empty', () async {
-      expect(() => FetchPool(maxConcurrent: 1, urls: [], destinationDirectory: ""), throwsArgumentError);
-      expect(() => FetchPool(maxConcurrent: 1, urls: [], destinationDirectory: "       "), throwsArgumentError);
+      expect(() => FetchPool(maxConcurrent: 1, urls: [], destinationDirectory: ''), throwsArgumentError);
+      expect(() => FetchPool(maxConcurrent: 1, urls: [], destinationDirectory: '       '), throwsArgumentError);
     });
 
     test('Ensure the fetch method cannot be called twice', () async {

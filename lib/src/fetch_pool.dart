@@ -72,7 +72,7 @@ class FetchPool {
       String filename = p.basename(url.path);
       String destinationPath = p.join(destinationDirectory, filename);
 
-      final request = http.Request("GET", url);
+      final request = http.Request('GET', url);
       final http.StreamedResponse response = await client.send(request);
 
       if (response.statusCode == HttpStatus.ok) {
