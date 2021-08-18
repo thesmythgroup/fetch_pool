@@ -1,0 +1,17 @@
+name: fetch_pool
+description: A library to asynchronously download URLs using a pool of parallel connections.
+version: 1.0.0
+# homepage: https://www.example.com
+
+environment:
+  sdk: '>=2.12.0 <3.0.0'
+
+# dependencies:
+#   path: ^1.8.0
+
+dev_dependencies:
+  lints: ^1.0.0
+  test: ^1.16.0
+dependencies: 
+  http: ^0.13.3
+  pool: any
