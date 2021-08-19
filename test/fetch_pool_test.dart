@@ -124,7 +124,7 @@ void main() {
 
       var progressInvocationCount = 0;
       double lastProgress = -1;
-      await fetchPool.fetch(estimatedTotalPogressCallback: (progress) {
+      await fetchPool.fetch(progressCallback: (progress) {
         expect(progress >= 0, true);
         expect(progress <= 100, true);
         expect(progress > lastProgress, true);

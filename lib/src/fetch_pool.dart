@@ -58,13 +58,13 @@ class FetchPool {
   /// This method is only allowed to be called once on a [FetchPool] instance.
   /// If you need to repeat a fetch, you need to create a fresh instance.
   /// 
-  /// An [estimatedTotalPogressCallback] function can optionally be passed in. It will
+  /// A [progressCallback] function can optionally be passed in. It will
   /// be called repeatedly to report on the overall estimated progress. The progress
   /// is not calculated by the overall combined download size of all URLs (since
   /// that would require a roundtrip to the server for each URL before even beginning
   /// the download). Instead, the progress mainly reports the percentage of completed
   /// downloads plus the download percentage of active downloads.
-  Future<Map<String, FetchPoolResult>> fetch({ Function(double)? estimatedTotalPogressCallback }) async {
+  Future<Map<String, FetchPoolResult>> fetch({ Function(double)? progressCallback }) async {
     if (_hasFetchBeenRun) {
       throw StateError('It is illegal to run fetch more than once on the same instance.');
     }
@@ -78,14 +78,14 @@ class FetchPool {
     double lastTotalProgress = 0;
 
     void notifyProgressCallback() {
-      if (estimatedTotalPogressCallback != null) {
+      if (progressCallback != null) {
         final combinedActivePercentage = activeJobs.values.fold<double>(0, (sum, percent) => sum + percent);
         final activeJobFraction = activeJobs.isNotEmpty ? (activeJobs.length * (combinedActivePercentage / (activeJobs.length * 100))) : 0;
         final completedJobFraction = completedJobCount + activeJobFraction;
         final totalProgress = (completedJobFraction / uniqueUrls.length) * 100;
 
         if (totalProgress != lastTotalProgress) {
-          estimatedTotalPogressCallback(totalProgress);
+          progressCallback(totalProgress);
           lastTotalProgress = totalProgress;
         }
       }

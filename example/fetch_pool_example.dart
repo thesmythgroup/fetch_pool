@@ -35,8 +35,8 @@ void main() async {
   ];
 
   final pool = FetchPool(maxConcurrent: 2, urls: urls, destinationDirectory: './deep/path/to/images');
-  final results = await pool.fetch(estimatedTotalPogressCallback: (progress) {
-    print('Total p: $progress');
+  final results = await pool.fetch(progressCallback: (progress) {
+    print('Total progress: $progress');
   });
 
   results.forEach((url, result) {
