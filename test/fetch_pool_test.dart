@@ -21,6 +21,31 @@ void main() {
       }
     });
 
+    test('filenameFromUrl', () {
+      final url = 'https://test.com/img.png';
+      final urlWithQuery = 'https://test.com/img.png?a=123&b=456';
+      final urlWithoutExtension = 'https://test.com/img';
+      final urlWithoutExtensionWithQuery = 'https://test.com/img?a=123&b=456';
+
+      // basename (default)
+      expect(FetchPool.filenameFromUrl(url), 'img.png');
+      expect(FetchPool.filenameFromUrl(urlWithQuery), 'img.png');
+      expect(FetchPool.filenameFromUrl(urlWithoutExtension), 'img');
+      expect(FetchPool.filenameFromUrl(urlWithoutExtensionWithQuery), 'img');
+
+      // basenameWithQueryParams
+      expect(FetchPool.filenameFromUrl(url, FetchPoolFileNamingStrategy.basenameWithQueryParams), 'img.png');
+      expect(FetchPool.filenameFromUrl(urlWithQuery, FetchPoolFileNamingStrategy.basenameWithQueryParams), 'img_a_123_b_456.png');
+      expect(FetchPool.filenameFromUrl(urlWithoutExtension, FetchPoolFileNamingStrategy.basenameWithQueryParams), 'img');
+      expect(FetchPool.filenameFromUrl(urlWithoutExtensionWithQuery, FetchPoolFileNamingStrategy.basenameWithQueryParams), 'img_a_123_b_456');
+
+      // base64EncodedUrl
+      expect(FetchPool.filenameFromUrl(url, FetchPoolFileNamingStrategy.base64EncodedUrl), 'aHR0cHM6Ly90ZXN0LmNvbS9pbWcucG5n');
+      expect(FetchPool.filenameFromUrl(urlWithQuery, FetchPoolFileNamingStrategy.base64EncodedUrl), 'aHR0cHM6Ly90ZXN0LmNvbS9pbWcucG5nP2E9MTIzJmI9NDU2');
+      expect(FetchPool.filenameFromUrl(urlWithoutExtension, FetchPoolFileNamingStrategy.base64EncodedUrl), 'aHR0cHM6Ly90ZXN0LmNvbS9pbWc=');
+      expect(FetchPool.filenameFromUrl(urlWithoutExtensionWithQuery, FetchPoolFileNamingStrategy.base64EncodedUrl), 'aHR0cHM6Ly90ZXN0LmNvbS9pbWc_YT0xMjMmYj00NTY=');
+    });
+
     test('Single Image', () async {
       final expectedDestinationPath = p.join(destinationDir, 'image.png');
       final fetchPool = FetchPool(maxConcurrent: 2, urls: ['http://example.com/image.png'], destinationDirectory: destinationDir);
@@ -105,6 +130,115 @@ void main() {
 
       List<FileSystemEntity> entries = Directory(destinationDir).listSync(recursive: false).toList();
       expect(entries.length, urls.length - 3);
+    });
+
+    test('Local filenames with basename fileNamingStrategy (default)', () async {
+      final urls = List.generate(10, (index) => 'http://example.com/image$index.png?v=123&p=456');
+      final fetchPool = FetchPool(
+        maxConcurrent: 5,
+        urls: urls,
+        destinationDirectory: destinationDir
+      );
+      fetchPool.client = MockClient((request) async {
+        return Response.bytes(imageGifBytes, 200);
+      });
+
+      final results = await fetchPool.fetch();
+      final List<String> destinationPaths = [];
+      expect(results.length, urls.length);
+
+      for (var urlString in urls) {
+        final url = Uri.parse(urlString);
+        final expectedDestinationPath = p.join(destinationDir, p.basename(url.path));
+        final result = results[urlString];
+
+        destinationPaths.add(expectedDestinationPath);
+
+        expect(result != null, true);
+        expect(result!.url, urlString);
+        expect(result.localPath, expectedDestinationPath);
+      }
+
+      List<FileSystemEntity> entries = Directory(destinationDir).listSync(recursive: false).toList();
+      expect(entries.length, urls.length);
+
+      for (var element in entries) {
+        expect(destinationPaths.contains(element.path), true);
+      }
+    });
+
+    test('Local filenames with basenameWithQueryParams fileNamingStrategy', () async {
+      final urls = List.generate(10, (index) => 'http://example.com/image$index.png?v=123&p=456');
+      final fetchPool = FetchPool(
+        maxConcurrent: 5,
+        urls: urls,
+        destinationDirectory: destinationDir,
+        fileNamingStrategy: FetchPoolFileNamingStrategy.basenameWithQueryParams
+      );
+      fetchPool.client = MockClient((request) async {
+        return Response.bytes(imageGifBytes, 200);
+      });
+
+      final results = await fetchPool.fetch();
+      final List<String> destinationPaths = [];
+      expect(results.length, urls.length);
+
+      for (var urlString in urls) {
+        final url = Uri.parse(urlString);
+        final basenameWithoutExt = p.basenameWithoutExtension(url.path);
+        final extension = p.extension(url.path);
+        final expectedDestinationPath = p.join(destinationDir, '${basenameWithoutExt}_v_123_p_456$extension');
+        final result = results[urlString];
+
+        destinationPaths.add(expectedDestinationPath);
+
+        expect(result != null, true);
+        expect(result!.url, urlString);
+        expect(result.localPath, expectedDestinationPath);
+      }
+
+      List<FileSystemEntity> entries = Directory(destinationDir).listSync(recursive: false).toList();
+      expect(entries.length, urls.length);
+
+      for (var element in entries) {
+        expect(destinationPaths.contains(element.path), true);
+      }
+    });
+
+    test('Local filenames with base64EncodedUrl fileNamingStrategy', () async {
+      final urls = List.generate(10, (index) => 'http://example.com/image$index.png?v=123&p=456');
+      final fetchPool = FetchPool(
+        maxConcurrent: 5,
+        urls: urls,
+        destinationDirectory: destinationDir,
+        fileNamingStrategy: FetchPoolFileNamingStrategy.base64EncodedUrl
+      );
+      fetchPool.client = MockClient((request) async {
+        return Response.bytes(imageGifBytes, 200);
+      });
+
+      final results = await fetchPool.fetch();
+      final List<String> destinationPaths = [];
+      expect(results.length, urls.length);
+
+      for (var urlString in urls) {
+        final base64EncodedUrl = base64Url.encode(utf8.encode(urlString));
+        final expectedDestinationPath = p.join(destinationDir, base64EncodedUrl);
+        final result = results[urlString];
+
+        destinationPaths.add(expectedDestinationPath);
+
+        expect(result != null, true);
+        expect(result!.url, urlString);
+        expect(result.localPath, expectedDestinationPath);
+      }
+
+      List<FileSystemEntity> entries = Directory(destinationDir).listSync(recursive: false).toList();
+      expect(entries.length, urls.length);
+
+      for (var element in entries) {
+        expect(destinationPaths.contains(element.path), true);
+      }
     });
 
     test('Total Progress Callback', () async {

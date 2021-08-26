@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -22,6 +23,19 @@ class FetchPoolResult {
   FetchPoolResult({ required this.url, this.localPath, this.error });
 }
 
+/// Enum describing the different file naming strategies.
+enum FetchPoolFileNamingStrategy { 
+  /// Given a URL of https://test.com/img.png?a=123&b=456,
+  /// results in a local filename of "img.png".
+  basename,
+  /// Given a URL of https://test.com/img.png?a=123&b=456,
+  /// results in a local filename of "img_a_123_b_456.png".
+  basenameWithQueryParams,
+  /// Given a URL of https://test.com/img.png?a=123&b=456,
+  /// results in a local filename of "aHR0cHM6Ly90ZXN0LmNvbS9pbWcucG5nP2E9MTIzJmI9NDU2".
+  base64EncodedUrl
+}
+
 /// Class used to fetch a list of URLs in parallel, only using a set number
 /// of operations in parallel.
 class FetchPool {
@@ -33,6 +47,9 @@ class FetchPool {
   final List<String> urls;
   /// Results keyed by the URL string
   final Map<String, FetchPoolResult> resultsByUrl = {};
+  /// Indicates how the local filename should be named. Defaults to [basename].
+  final FetchPoolFileNamingStrategy fileNamingStrategy;
+  /// Used to prevent `fetch` from being called twice
   var _hasFetchBeenRun = false;
   /// The HTTP client to use
   /// 
@@ -42,13 +59,37 @@ class FetchPool {
   /// Creates a new instance allowing [maxConcurrent] parallel downloads
   /// 
   /// If [destinationDirectory] doesn't exist, it will be created.
-  FetchPool({required this.maxConcurrent, required this.urls, required this.destinationDirectory}) {
+  FetchPool({
+    required this.maxConcurrent,
+    required this.urls,
+    required this.destinationDirectory,
+    this.fileNamingStrategy = FetchPoolFileNamingStrategy.basename
+  }) {
     if (maxConcurrent < 1) {
       throw ArgumentError.value(maxConcurrent, 'maxConcurrent', 'The maxConcurrent value must be greater than 0.');
     }
 
     if (destinationDirectory.trim().isEmpty) {
       throw ArgumentError.value(destinationDirectory, 'destinationDirectory', 'The destinationDirectory must not be empty.');
+    }
+  }
+
+  /// Convert the given Url string to a local filename, applying the given naming strategy
+  /// 
+  /// See [FetchPoolFileNamingStrategy] for details.
+  static String filenameFromUrl(String urlString, [FetchPoolFileNamingStrategy fileNamingStrategy = FetchPoolFileNamingStrategy.basename]) {
+    final url = Uri.parse(urlString);
+    switch(fileNamingStrategy) {
+      case FetchPoolFileNamingStrategy.basename:
+        return p.basename(url.path);
+      case FetchPoolFileNamingStrategy.basenameWithQueryParams:
+        final basenameWithoutExt = p.basenameWithoutExtension(url.path);
+        final extension = p.extension(url.path);
+        final convertedQueryString = '${url.hasQuery ? '_' : ''}${url.query.replaceAll(RegExp('&|=|\\?'), '_')}';
+        return '$basenameWithoutExt$convertedQueryString$extension';
+      case FetchPoolFileNamingStrategy.base64EncodedUrl:
+        final bytes = utf8.encode(urlString);
+        return base64Url.encode(bytes);
     }
   }
 
@@ -93,7 +134,7 @@ class FetchPool {
 
     var poolStream = pool.forEach<String, FetchPoolResult>(uniqueUrls, (urlString) async {
       final url = Uri.parse(urlString);
-      String filename = p.basename(url.path);
+      String filename = filenameFromUrl(urlString, fileNamingStrategy);
       String destinationPath = p.join(destinationDirectory, filename);
 
       double calculateProgress(int downloadedByteCount, int? contentLength) {
