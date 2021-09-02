@@ -1,8 +1,8 @@
 # FetchPool
 
-A library to help you easily asynchronously download lists of URLs in parallel, using a given
-number of parallel connections. You could for example download a list of 100 images, while only
-ever downloading four images concurrently.
+A library to easily and asynchronously download a list of URLs in parallel, using a given
+maximum number of concurrent connections. This lets you download a list of hundreds of files,
+while only ever downloading a few at the same time.
 
 ## Usage
 
