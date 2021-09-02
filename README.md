@@ -4,6 +4,8 @@ A library to easily and asynchronously download a list of URLs in parallel, usin
 maximum number of concurrent connections. This lets you download a list of hundreds of files,
 while only ever downloading a few at the same time.
 
+![Tests](https://github.com/thesmythgroup/fetch_pool/actions/workflows/dart.yml/badge.svg)
+
 ## Usage
 
 A simple usage example:
