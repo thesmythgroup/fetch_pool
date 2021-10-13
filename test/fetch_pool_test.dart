@@ -282,6 +282,91 @@ void main() {
       }
     });
 
+    test('"overwrite" fileOverwritingStrategy (default)', () async {
+      final urls =
+          List.generate(10, (index) => 'http://example.com/image$index.png');
+      final fetchPool = FetchPool(
+          maxConcurrent: 5, urls: urls, destinationDirectory: destinationDir);
+      fetchPool.client = MockClient((request) async {
+        return Response.bytes(imageGifBytes, 200);
+      });
+
+      // Create three files with names that are about to be downloaded
+      final existingFileIndexes = [3, 4, 5].toList();
+      await Future.forEach(existingFileIndexes, (int fileIndex) async {
+        String destinationPath = p.join(destinationDir, 'image$fileIndex.png');
+        final file = File(destinationPath);
+        await file.create(recursive: true);
+        return file.writeAsString('Can\'t touch this');
+      });
+
+      final results = await fetchPool.fetch();
+      expect(results.length, urls.length);
+
+      // Check the persistenceResult values
+      for (var url in results.keys) {
+        if (['image3.png', 'image4.png', 'image5.png']
+            .contains(p.basename(url))) {
+          expect(results[url]!.persistenceResult,
+              FetchPoolFilePersistenceResult.overwritten);
+        } else {
+          expect(results[url]!.persistenceResult,
+              FetchPoolFilePersistenceResult.saved);
+        }
+      }
+
+      // Make sure the files were overwritten
+      for (var fileIndex in existingFileIndexes) {
+        String destinationPath = p.join(destinationDir, 'image$fileIndex.png');
+        final file = File(destinationPath);
+        expect(file.readAsBytesSync(), imageGifBytes);
+      }
+    });
+
+    test('"skip" fileOverwritingStrategy', () async {
+      final urls =
+          List.generate(10, (index) => 'http://example.com/image$index.png');
+      final fetchPool = FetchPool(
+          maxConcurrent: 5,
+          urls: urls,
+          destinationDirectory: destinationDir,
+          fileOverwritingStrategy: FetchPoolFileOverwritingStrategy.skip);
+      fetchPool.client = MockClient((request) async {
+        return Response.bytes(imageGifBytes, 200);
+      });
+
+      // Create three files with names that are about to be downloaded
+      final existingFileIndexes = [3, 4, 5].toList();
+      await Future.forEach(existingFileIndexes, (int fileIndex) async {
+        String destinationPath = p.join(destinationDir, 'image$fileIndex.png');
+        final file = File(destinationPath);
+        await file.create(recursive: true);
+        return file.writeAsString('Can\'t touch this');
+      });
+
+      final results = await fetchPool.fetch();
+      expect(results.length, urls.length);
+
+      // Check the persistenceResult values
+      for (var url in results.keys) {
+        if (['image3.png', 'image4.png', 'image5.png']
+            .contains(p.basename(url))) {
+          expect(results[url]!.persistenceResult,
+              FetchPoolFilePersistenceResult.skipped);
+        } else {
+          expect(results[url]!.persistenceResult,
+              FetchPoolFilePersistenceResult.saved);
+        }
+      }
+
+      // Make sure the files not overwritten
+      for (var fileIndex in existingFileIndexes) {
+        String destinationPath = p.join(destinationDir, 'image$fileIndex.png');
+        final file = File(destinationPath);
+        expect(file.readAsStringSync(), 'Can\'t touch this');
+      }
+    });
+
     test('Total Progress Callback', () async {
       final urls =
           List.generate(50, (index) => 'http://example.com/image$index.png');

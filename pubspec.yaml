@@ -1,6 +1,6 @@
 name: fetch_pool
 description: A library to asynchronously download URLs using a pool of parallel connections.
-version: 1.0.0
+version: 1.0.1
 repository: https://github.com/thesmythgroup/fetch_pool
 
 environment:

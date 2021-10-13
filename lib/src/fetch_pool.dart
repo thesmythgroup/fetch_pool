@@ -13,6 +13,10 @@ class FetchPoolResult {
   /// Local path the URL was downloaded to
   final String? localPath;
 
+  /// Local persistence result
+  /// Was the file simply saved, overwritten, or skipped?
+  final FetchPoolFilePersistenceResult? persistenceResult;
+
   /// Error in case of failure
   final Object? error;
 
@@ -22,7 +26,8 @@ class FetchPoolResult {
   }
 
   /// Create a new instance
-  FetchPoolResult({required this.url, this.localPath, this.error});
+  FetchPoolResult(
+      {required this.url, this.localPath, this.persistenceResult, this.error});
 }
 
 /// Enum describing the different file naming strategies.
@@ -38,6 +43,27 @@ enum FetchPoolFileNamingStrategy {
   /// Given a URL of https://test.com/img.png?a=123&b=456,
   /// results in a local filename of "aHR0cHM6Ly90ZXN0LmNvbS9pbWcucG5nP2E9MTIzJmI9NDU2".
   base64EncodedUrl
+}
+
+/// Enum describing the different file persistence results.
+enum FetchPoolFilePersistenceResult {
+  /// If the file didn't already exist in the target directory and was saved
+  saved,
+
+  /// If the file already existed in the target directory and was overwritten
+  overwritten,
+
+  /// If the file already existed in the target directory and was skipped
+  skipped
+}
+
+/// Enum describing the different file overwriting strategies.
+enum FetchPoolFileOverwritingStrategy {
+  /// If the file already exists in the target directory, overwrite it
+  overwrite,
+
+  /// If the file already exists in the target directory, don't download it
+  skip
 }
 
 /// Class used to fetch a list of URLs in parallel, only using a set number
@@ -58,6 +84,10 @@ class FetchPool {
   /// Indicates how the local filename should be named. Defaults to [basename].
   final FetchPoolFileNamingStrategy fileNamingStrategy;
 
+  /// Indicates how to handle files of the same name that already exist in the
+  /// target directory. Defaults to [overwrite].
+  final FetchPoolFileOverwritingStrategy fileOverwritingStrategy;
+
   /// Used to prevent `fetch` from being called twice
   var _hasFetchBeenRun = false;
 
@@ -73,7 +103,9 @@ class FetchPool {
       {required this.maxConcurrent,
       required this.urls,
       required this.destinationDirectory,
-      this.fileNamingStrategy = FetchPoolFileNamingStrategy.basename}) {
+      this.fileNamingStrategy = FetchPoolFileNamingStrategy.basename,
+      this.fileOverwritingStrategy =
+          FetchPoolFileOverwritingStrategy.overwrite}) {
     if (maxConcurrent < 1) {
       throw ArgumentError.value(maxConcurrent, 'maxConcurrent',
           'The maxConcurrent value must be greater than 0.');
@@ -155,8 +187,11 @@ class FetchPool {
     var poolStream =
         pool.forEach<String, FetchPoolResult>(uniqueUrls, (urlString) async {
       final url = Uri.parse(urlString);
-      String filename = filenameFromUrl(urlString, fileNamingStrategy);
-      String destinationPath = p.join(destinationDirectory, filename);
+      final String filename = filenameFromUrl(urlString, fileNamingStrategy);
+      final String destinationPath = p.join(destinationDirectory, filename);
+      final File destinationFile = File(destinationPath);
+      final bool destinationFileExists = await destinationFile.exists();
+      FetchPoolResult result;
 
       double calculateProgress(int downloadedByteCount, int? contentLength) {
         if (contentLength != null && contentLength > 0) {
@@ -168,42 +203,52 @@ class FetchPool {
 
       activeJobs[urlString] = 0;
 
-      final request = http.Request('GET', url);
-      final http.StreamedResponse response = await client.send(request);
-      FetchPoolResult result;
+      if (fileOverwritingStrategy == FetchPoolFileOverwritingStrategy.skip &&
+          destinationFileExists) {
+        result = FetchPoolResult(
+            url: urlString,
+            localPath: destinationPath,
+            persistenceResult: FetchPoolFilePersistenceResult.skipped);
+      } else {
+        final request = http.Request('GET', url);
+        final http.StreamedResponse response = await client.send(request);
 
-      if (response.statusCode == HttpStatus.ok) {
-        File destinationFile =
-            await File(destinationPath).create(recursive: true);
-        IOSink destinationFileWriteStream = destinationFile.openWrite();
-        int downloadedByteCount = 0;
-        // destinationFileWriteStream.addStream(stream)
+        if (response.statusCode == HttpStatus.ok) {
+          await destinationFile.create(recursive: true);
 
-        await response.stream.listen((List<int> chunk) {
+          IOSink destinationFileWriteStream = destinationFile.openWrite();
+          int downloadedByteCount = 0;
+
+          await response.stream.listen((List<int> chunk) {
+            // Display percentage of completion
+            final percentage =
+                calculateProgress(downloadedByteCount, response.contentLength);
+            activeJobs[urlString] = percentage;
+            notifyProgressCallback();
+
+            destinationFileWriteStream.add(chunk);
+            downloadedByteCount += chunk.length;
+          }).asFuture();
+
           // Display percentage of completion
           final percentage =
               calculateProgress(downloadedByteCount, response.contentLength);
           activeJobs[urlString] = percentage;
           notifyProgressCallback();
 
-          // chunks.add(chunk);
-          destinationFileWriteStream.add(chunk);
-          downloadedByteCount += chunk.length;
-        }).asFuture();
+          // Close the stream
+          await destinationFileWriteStream.close();
 
-        // Display percentage of completion
-        final percentage =
-            calculateProgress(downloadedByteCount, response.contentLength);
-        activeJobs[urlString] = percentage;
-        notifyProgressCallback();
-
-        // Close the stream
-        await destinationFileWriteStream.close();
-
-        result = FetchPoolResult(url: urlString, localPath: destinationPath);
-      } else {
-        result = FetchPoolResult(
-            url: urlString, error: 'Status ${response.statusCode}');
+          result = FetchPoolResult(
+              url: urlString,
+              localPath: destinationPath,
+              persistenceResult: destinationFileExists
+                  ? FetchPoolFilePersistenceResult.overwritten
+                  : FetchPoolFilePersistenceResult.saved);
+        } else {
+          result = FetchPoolResult(
+              url: urlString, error: 'Status ${response.statusCode}');
+        }
       }
 
       activeJobs.remove(urlString);
