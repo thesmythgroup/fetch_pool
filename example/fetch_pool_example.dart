@@ -34,7 +34,10 @@ void main() async {
     'https://picsum.photos/id/1025/4951/3301'
   ];
 
-  final pool = FetchPool(maxConcurrent: 2, urls: urls, destinationDirectory: './deep/path/to/images');
+  final pool = FetchPool(
+      maxConcurrent: 2,
+      urls: urls,
+      destinationDirectory: './deep/path/to/images');
   final results = await pool.fetch(progressCallback: (progress) {
     print('Total progress: $progress');
   });
@@ -45,7 +48,7 @@ void main() async {
     } else {
       print('FAILURE: $url > ${result.error}');
     }
-  }); 
+  });
 
   print('Done');
 }
