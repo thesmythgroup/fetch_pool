@@ -4,7 +4,8 @@ A library to easily and asynchronously download a list of URLs in parallel, usin
 maximum number of concurrent connections. This lets you download a list of hundreds of files,
 while only ever downloading a few at the same time.
 
-![Tests](https://github.com/thesmythgroup/fetch_pool/actions/workflows/dart.yml/badge.svg)
+[![Pub](https://img.shields.io/pub/v/fetch_pool.svg)](https://pub.dartlang.org/packages/fetch_pool)
+[![Tests](https://github.com/thesmythgroup/fetch_pool/actions/workflows/dart.yml/badge.svg)](https://github.com/thesmythgroup/fetch_pool/actions/workflows/dart.yml)
 
 ## Usage
 
@@ -47,6 +48,8 @@ By default, the downloaded files will be named using the `FetchPoolFileNamingStr
 That means that a URL like `https://test.com/img.png?a=123&b=456` will result in a local filename of `img.png`.
 Using `basenameWithQueryParams` would result in `img_a_123_b_456.png`.
 Using `base64EncodedUrl` base64 encodes the whole URL and would result in a local filename of `aHR0cHM6Ly90ZXN0LmNvbS9pbWcucG5nP2E9MTIzJmI9NDU2`.
+
+By default, the `FetchPoolFileOverwritingStrategy.overwrite` strategy is used. That means that any existing files of the same name in the `destinationDirectory` will be overwritten. Using the `FetchPoolFileOverwritingStrategy.skip` strategy will skip existing files and not even attempt to download them. The `FetchPoolResult` object for each requested URL has a `persistenceResult` property that indicates if/how the file was persisted (`saved`, `overwritten`, or `skipped`).
 
 ## Credits
 
