@@ -9,8 +9,10 @@ import 'package:path/path.dart' as p;
 class FetchPoolResult {
   /// URL that was (attempted to be) fetched
   final String url;
+
   /// Local path the URL was downloaded to
   final String? localPath;
+
   /// Error in case of failure
   final Object? error;
 
@@ -18,19 +20,21 @@ class FetchPoolResult {
   bool get isSuccess {
     return error == null;
   }
-  
+
   /// Create a new instance
-  FetchPoolResult({ required this.url, this.localPath, this.error });
+  FetchPoolResult({required this.url, this.localPath, this.error});
 }
 
 /// Enum describing the different file naming strategies.
-enum FetchPoolFileNamingStrategy { 
+enum FetchPoolFileNamingStrategy {
   /// Given a URL of https://test.com/img.png?a=123&b=456,
   /// results in a local filename of "img.png".
   basename,
+
   /// Given a URL of https://test.com/img.png?a=123&b=456,
   /// results in a local filename of "img_a_123_b_456.png".
   basenameWithQueryParams,
+
   /// Given a URL of https://test.com/img.png?a=123&b=456,
   /// results in a local filename of "aHR0cHM6Ly90ZXN0LmNvbS9pbWcucG5nP2E9MTIzJmI9NDU2".
   base64EncodedUrl
@@ -41,51 +45,61 @@ enum FetchPoolFileNamingStrategy {
 class FetchPool {
   /// Max number of concurrent operations (downloads)
   final int maxConcurrent;
+
   /// Destination download directory
   final String destinationDirectory;
+
   /// List of URLs to download
   final List<String> urls;
+
   /// Results keyed by the URL string
   final Map<String, FetchPoolResult> resultsByUrl = {};
+
   /// Indicates how the local filename should be named. Defaults to [basename].
   final FetchPoolFileNamingStrategy fileNamingStrategy;
+
   /// Used to prevent `fetch` from being called twice
   var _hasFetchBeenRun = false;
+
   /// The HTTP client to use
-  /// 
+  ///
   /// This should usually only need to be changed for unit testing.
   http.Client client = http.Client();
 
   /// Creates a new instance allowing [maxConcurrent] parallel downloads
-  /// 
+  ///
   /// If [destinationDirectory] doesn't exist, it will be created.
-  FetchPool({
-    required this.maxConcurrent,
-    required this.urls,
-    required this.destinationDirectory,
-    this.fileNamingStrategy = FetchPoolFileNamingStrategy.basename
-  }) {
+  FetchPool(
+      {required this.maxConcurrent,
+      required this.urls,
+      required this.destinationDirectory,
+      this.fileNamingStrategy = FetchPoolFileNamingStrategy.basename}) {
     if (maxConcurrent < 1) {
-      throw ArgumentError.value(maxConcurrent, 'maxConcurrent', 'The maxConcurrent value must be greater than 0.');
+      throw ArgumentError.value(maxConcurrent, 'maxConcurrent',
+          'The maxConcurrent value must be greater than 0.');
     }
 
     if (destinationDirectory.trim().isEmpty) {
-      throw ArgumentError.value(destinationDirectory, 'destinationDirectory', 'The destinationDirectory must not be empty.');
+      throw ArgumentError.value(destinationDirectory, 'destinationDirectory',
+          'The destinationDirectory must not be empty.');
     }
   }
 
   /// Convert the given Url string to a local filename, applying the given naming strategy
-  /// 
+  ///
   /// See [FetchPoolFileNamingStrategy] for details.
-  static String filenameFromUrl(String urlString, [FetchPoolFileNamingStrategy fileNamingStrategy = FetchPoolFileNamingStrategy.basename]) {
+  static String filenameFromUrl(String urlString,
+      [FetchPoolFileNamingStrategy fileNamingStrategy =
+          FetchPoolFileNamingStrategy.basename]) {
     final url = Uri.parse(urlString);
-    switch(fileNamingStrategy) {
+    switch (fileNamingStrategy) {
       case FetchPoolFileNamingStrategy.basename:
         return p.basename(url.path);
       case FetchPoolFileNamingStrategy.basenameWithQueryParams:
         final basenameWithoutExt = p.basenameWithoutExtension(url.path);
         final extension = p.extension(url.path);
-        final convertedQueryString = '${url.hasQuery ? '_' : ''}${url.query.replaceAll(RegExp('&|=|\\?'), '_')}';
+        final convertedQueryString =
+            '${url.hasQuery ? '_' : ''}${url.query.replaceAll(RegExp('&|=|\\?'), '_')}';
         return '$basenameWithoutExt$convertedQueryString$extension';
       case FetchPoolFileNamingStrategy.base64EncodedUrl:
         final bytes = utf8.encode(urlString);
@@ -94,34 +108,40 @@ class FetchPool {
   }
 
   /// Starts fetching the list of URLs
-  /// 
+  ///
   /// Returns a [Future] with the map of results, keyed by each URL.
   /// This method is only allowed to be called once on a [FetchPool] instance.
   /// If you need to repeat a fetch, you need to create a fresh instance.
-  /// 
+  ///
   /// A [progressCallback] function can optionally be passed in. It will
   /// be called repeatedly to report on the overall estimated progress. The progress
   /// is not calculated by the overall combined download size of all URLs (since
   /// that would require a roundtrip to the server for each URL before even beginning
   /// the download). Instead, the progress mainly reports the percentage of completed
   /// downloads plus the download percentage of active downloads.
-  Future<Map<String, FetchPoolResult>> fetch({ Function(double)? progressCallback }) async {
+  Future<Map<String, FetchPoolResult>> fetch(
+      {Function(double)? progressCallback}) async {
     if (_hasFetchBeenRun) {
-      throw StateError('It is illegal to run fetch more than once on the same instance.');
+      throw StateError(
+          'It is illegal to run fetch more than once on the same instance.');
     }
 
     _hasFetchBeenRun = true;
 
     var pool = Pool(maxConcurrent);
     final uniqueUrls = urls.toSet().toList();
-    final Map<String, double> activeJobs = {};  
+    final Map<String, double> activeJobs = {};
     var completedJobCount = 0;
     double lastTotalProgress = 0;
 
     void notifyProgressCallback() {
       if (progressCallback != null) {
-        final combinedActivePercentage = activeJobs.values.fold<double>(0, (sum, percent) => sum + percent);
-        final activeJobFraction = activeJobs.isNotEmpty ? (activeJobs.length * (combinedActivePercentage / (activeJobs.length * 100))) : 0;
+        final combinedActivePercentage =
+            activeJobs.values.fold<double>(0, (sum, percent) => sum + percent);
+        final activeJobFraction = activeJobs.isNotEmpty
+            ? (activeJobs.length *
+                (combinedActivePercentage / (activeJobs.length * 100)))
+            : 0;
         final completedJobFraction = completedJobCount + activeJobFraction;
         final totalProgress = (completedJobFraction / uniqueUrls.length) * 100;
 
@@ -132,7 +152,8 @@ class FetchPool {
       }
     }
 
-    var poolStream = pool.forEach<String, FetchPoolResult>(uniqueUrls, (urlString) async {
+    var poolStream =
+        pool.forEach<String, FetchPoolResult>(uniqueUrls, (urlString) async {
       final url = Uri.parse(urlString);
       String filename = filenameFromUrl(urlString, fileNamingStrategy);
       String destinationPath = p.join(destinationDirectory, filename);
@@ -152,33 +173,37 @@ class FetchPool {
       FetchPoolResult result;
 
       if (response.statusCode == HttpStatus.ok) {
-        File destinationFile = await File(destinationPath).create(recursive: true);
+        File destinationFile =
+            await File(destinationPath).create(recursive: true);
         IOSink destinationFileWriteStream = destinationFile.openWrite();
         int downloadedByteCount = 0;
         // destinationFileWriteStream.addStream(stream)
 
         await response.stream.listen((List<int> chunk) {
           // Display percentage of completion
-          final percentage = calculateProgress(downloadedByteCount, response.contentLength);
+          final percentage =
+              calculateProgress(downloadedByteCount, response.contentLength);
           activeJobs[urlString] = percentage;
           notifyProgressCallback();
-          
+
           // chunks.add(chunk);
           destinationFileWriteStream.add(chunk);
           downloadedByteCount += chunk.length;
         }).asFuture();
 
         // Display percentage of completion
-        final percentage = calculateProgress(downloadedByteCount, response.contentLength);
+        final percentage =
+            calculateProgress(downloadedByteCount, response.contentLength);
         activeJobs[urlString] = percentage;
         notifyProgressCallback();
 
         // Close the stream
         await destinationFileWriteStream.close();
-          
+
         result = FetchPoolResult(url: urlString, localPath: destinationPath);
       } else {
-        result = FetchPoolResult(url: urlString, error: 'Status ${response.statusCode}');
+        result = FetchPoolResult(
+            url: urlString, error: 'Status ${response.statusCode}');
       }
 
       activeJobs.remove(urlString);
